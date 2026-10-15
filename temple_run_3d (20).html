@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Temple Run 3D - U-Magnet Power-Up</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            background-color: #050508;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .hud-shadow {
+            text-shadow: 2px 2px 6px rgba(0,0,0,0.9), 0 0 12px rgba(255, 180, 0, 0.5);
+        }
+        .btn-glow {
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+            transition: all 0.2s ease;
+        }
+        .btn-glow:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 158, 11, 0.6);
+        }
+        .btn-glow:active {
+            transform: translateY(1px);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        .magnet-active {
+            animation: pulseGlow 1s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-black text-white overflow-hidden">
+
+    <!-- Game Canvas -->
+    <div id="game-container" class="relative w-full h-screen"></div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-start pointer-events-none z-10">
+        <!-- Score, Coins & Magnet HUD -->
+        <div class="flex flex-col gap-2">
+            <div class="flex items-center gap-3 bg-black/75 backdrop-blur-md px-4 py-2 rounded-xl border border-amber-500/40 shadow-lg">
+                <i class="fa-solid fa-trophy text-amber-400 text-xl"></i>
+                <div>
+                    <div class="text-[10px] md:text-xs text-gray-400 uppercase tracking-wider font-semibold">Distance</div>
+                    <div id="score-text" class="text-xl md:text-2xl font-black text-amber-400 hud-shadow">0m</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 bg-black/75 backdrop-blur-md px-4 py-2 rounded-xl border border-yellow-500/40 shadow-lg">
+                <i class="fa-solid fa-coins text-yellow-300 text-xl animate-pulse"></i>
+                <div>
+                    <div class="text-[10px] md:text-xs text-gray-400 uppercase tracking-wider font-semibold">Coins</div>
+                    <div id="coins-text" class="text-xl md:text-2xl font-black text-yellow-300 hud-shadow">0</div>
+                </div>
+            </div>
+
+            <!-- Magnet Timer Badge -->
+            <div id="magnet-hud" class="hidden flex items-center gap-3 bg-red-950/80 backdrop-blur-md px-4 py-2 rounded-xl border border-red-500/60 shadow-lg magnet-active">
+                <i class="fa-solid fa-magnet text-red-400 text-xl"></i>
+                <div>
+                    <div class="text-[10px] md:text-xs text-red-300 uppercase tracking-wider font-bold">U-MAGNET ACTIVE</div>
+                    <div id="magnet-timer" class="text-sm font-black text-red-200">10s</div>
+                </div>
+            </div>
+
+            <!-- Magnet Cooldown Indicator Badge -->
+            <div id="magnet-cooldown-hud" class="hidden flex items-center gap-3 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-xl border border-gray-500/40 shadow-lg">
+                <i class="fa-solid fa-hourglass-half text-gray-400 text-xl animate-spin"></i>
+                <div>
+                    <div class="text-[10px] md:text-xs text-gray-400 uppercase tracking-wider font-bold">MAGNET RECHARGING</div>
+                    <div id="magnet-cooldown-timer" class="text-sm font-black text-amber-400">20s</div>
+                </div>
+            </div>
+
+            <div class="text-xs text-amber-300/90 font-bold bg-black/60 px-3 py-1 rounded-lg border border-amber-500/20 w-fit">
+                BEST: <span id="high-score-text">0m</span>
+            </div>
+        </div>
+
+        <!-- Top Right Controls -->
+        <div class="flex gap-2 pointer-events-auto">
+            <button id="hitbox-btn" class="bg-slate-800/80 hover:bg-slate-700 text-amber-300 font-bold px-3 py-2 md:px-4 md:py-3 rounded-xl border border-amber-500/30 text-xs md:text-sm flex items-center gap-1.5 shadow-lg">
+                <i class="fa-solid fa-eye"></i>
+                <span class="hidden md:inline">Hitbox:</span>
+                <span id="hitbox-status">OFF</span>
+            </button>
+            <button id="pause-btn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold p-3 md:px-5 md:py-3 rounded-xl shadow-lg flex items-center gap-2 btn-glow">
+                <i class="fa-solid fa-pause text-lg"></i>
+                <span class="hidden md:inline uppercase text-sm font-black">Pause</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Touch Control Hint Banner -->
+    <div class="absolute bottom-4 left-4 z-10 pointer-events-none">
+        <div class="bg-black/70 backdrop-blur-md border border-amber-500/40 px-3 py-2 rounded-xl text-xs text-amber-200 shadow-lg flex items-center gap-2">
+            <i class="fa-solid fa-hand-pointer text-amber-400 animate-bounce"></i>
+            <span><strong>Swipe Anywhere:</strong> Left / Right / Up (Jump) / Down (Slide)</span>
+        </div>
+    </div>
+
+    <!-- Start / Game Over Overlay -->
+    <div id="menu-overlay" class="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col justify-center items-center z-20 transition-opacity duration-300">
+        <div class="max-w-md w-11/12 bg-slate-900/95 border border-amber-500/40 p-6 md:p-8 rounded-3xl shadow-2xl text-center relative overflow-hidden">
+            <h1 id="menu-title" class="text-3xl md:text-5xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 mb-1 hud-shadow">
+                TEMPLE RUN 3D
+            </h1>
+            <p id="menu-subtitle" class="text-amber-200/90 text-xs md:text-sm mb-5 font-medium">Collect Red U-Magnets & Dodge Obstacles!</p>
+
+            <div id="stats-container" class="hidden mb-5 bg-slate-800/90 p-4 rounded-2xl border border-slate-700/60 flex justify-around">
+                <div>
+                    <div class="text-[10px] text-gray-400 uppercase">Distance</div>
+                    <div id="final-score" class="text-xl font-black text-amber-400">0m</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-gray-400 uppercase">Coins</div>
+                    <div id="final-coins" class="text-xl font-black text-yellow-300">0</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-gray-400 uppercase">Best</div>
+                    <div id="final-high-score" class="text-xl font-black text-amber-300">0m</div>
+                </div>
+            </div>
+
+            <button id="start-btn" class="w-full py-4 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-500 text-slate-950 font-black text-lg uppercase tracking-wider rounded-2xl btn-glow flex items-center justify-center gap-2 mb-4">
+                <i class="fa-solid fa-play"></i> Start Run
+            </button>
+
+            <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/40 text-[11px] text-gray-300 text-left flex flex-col gap-1">
+                <div><span class="text-amber-400 font-bold"><i class="fa-solid fa-hand-pointer mr-1"></i> Swipe Controls:</span> Swipe Left/Right to turn, Up to Jump, Down to Slide</div>
+                <div><span class="text-amber-400 font-bold"><i class="fa-solid fa-magnet mr-1"></i> Red U-Magnet:</span> Hold the magnet to attract all surrounding coins!</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause Overlay -->
+    <div id="pause-overlay" class="hidden absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col justify-center items-center z-30">
+        <div class="max-w-sm w-11/12 bg-slate-900 border border-amber-500/40 p-8 rounded-3xl shadow-2xl text-center">
+            <h2 class="text-3xl font-black text-amber-400 mb-6 hud-shadow">GAME PAUSED</h2>
+            <div class="flex flex-col gap-4">
+                <button id="resume-btn" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black uppercase rounded-2xl btn-glow flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> Resume
+                </button>
+                <button id="stop-btn" class="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-red-400 font-bold uppercase rounded-2xl border border-red-500/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-stop"></i> Exit to Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        function playSound(type) {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'jump') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.exponentialRampToValueAtTime(520, now + 0.18);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+                    osc.start(now);
+                    osc.stop(now + 0.18);
+                } else if (type === 'coin') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(880, now);
+                    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+                } else if (type === 'magnet') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(300, now);
+                    osc.frequency.linearRampToValueAtTime(700, now + 0.3);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } else if (type === 'crash') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(140, now);
+                    osc.frequency.linearRampToValueAtTime(30, now + 0.35);
+                    gain.gain.setValueAtTime(0.5, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'slide') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(240, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                }
+            } catch (e) { console.log("Audio waiting for user interaction"); }
+        }
+
+        let scene, camera, renderer;
+        let isRunning = false;
+        let isPaused = false;
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('temple_run_high_score') || '0');
+        let coinsCollected = 0;
+        let gameSpeed = 0.45;
+        const maxSpeed = 0.98;
+        let showDebugHitboxes = false;
+
+        // Magnet Power-up & Cooldown State
+        let isMagnetActive = false;
+        let magnetTimeLeft = 0;
+        let magnetInterval = null;
+        let isMagnetOnCooldown = false;
+        let magnetCooldownTimeLeft = 0;
+        let magnetCooldownInterval = null;
+        let magnetAuraRing = null;
+        let handHeldMagnetMesh = null; // U-Magnet in runner's hand
+
+        // Lanes
+        const LANES = [-2.5, 0, 2.5];
+        let currentLane = 1;
+        let playerGroup, adventurerMesh, playerBoxHelper;
+        let leftArm, rightArm, leftLeg, rightLeg;
+        let playerPosY = 0;
+        let playerVelocityY = 0;
+        let isJumping = false;
+        let isSliding = false;
+        let slideTimer = 0;
+
+        const GRAVITY = -0.022;
+        const JUMP_FORCE = 0.42;
+
+        // Seamless Infinite World Objects
+        const trackSegments = [];
+        const obstacles = [];
+        const coins = [];
+        const magnets = [];
+        const SEGMENT_LENGTH = 30;
+        const INITIAL_SEGMENTS = 18; // Overlaps far into distance (540m+)
+        let nextSegmentZ = 0;
+
+        // DOM References
+        const menuOverlay = document.getElementById('menu-overlay');
+        const pauseOverlay = document.getElementById('pause-overlay');
+        const scoreText = document.getElementById('score-text');
+        const coinsText = document.getElementById('coins-text');
+        const highScoreText = document.getElementById('high-score-text');
+        const menuTitle = document.getElementById('menu-title');
+        const menuSubtitle = document.getElementById('menu-subtitle');
+        const statsContainer = document.getElementById('stats-container');
+        const finalScore = document.getElementById('final-score');
+        const finalCoins = document.getElementById('final-coins');
+        const finalHighScore = document.getElementById('final-high-score');
+        const hitboxStatus = document.getElementById('hitbox-status');
+
+        highScoreText.textContent = highScore + 'm';
+
+        function initScene() {
+            const container = document.getElementById('game-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0c14);
+            scene.fog = new THREE.FogExp2(0x0a0c14, 0.010);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 350);
+            camera.position.set(0, 4.2, 7.5);
+            camera.rotation.x = -0.25;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Lighting Setup
+            const ambientLight = new THREE.AmbientLight(0xfff5ea, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+            dirLight.position.set(15, 30, -20);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 150;
+            dirLight.shadow.camera.left = -15;
+            dirLight.shadow.camera.right = 15;
+            scene.add(dirLight);
+
+            createPlayer();
+            buildInitialPath();
+
+            window.addEventListener('resize', onWindowResize);
+            setupInputHandlers();
+        }
+
+        function createUMagnetMesh() {
+            const magnetGroup = new THREE.Group();
+            const redMat = new THREE.MeshStandardMaterial({ color: 0xdd1111, roughness: 0.3, metalness: 0.6 });
+            const silverMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.2, metalness: 0.9 });
+
+            // Curved base arc
+            const torusGeom = new THREE.TorusGeometry(0.3, 0.08, 12, 16, Math.PI);
+            const baseArc = new THREE.Mesh(torusGeom, redMat);
+            baseArc.rotation.z = Math.PI;
+            magnetGroup.add(baseArc);
+
+            // Left leg
+            const legGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.35, 12);
+            const legL = new THREE.Mesh(legGeom, redMat);
+            legL.position.set(-0.3, 0.175, 0);
+            magnetGroup.add(legL);
+
+            // Right leg
+            const legR = new THREE.Mesh(legGeom, redMat);
+            legR.position.set(0.3, 0.175, 0);
+            magnetGroup.add(legR);
+
+            // Silver tips
+            const tipGeom = new THREE.CylinderGeometry(0.09, 0.09, 0.1, 12);
+            const tipL = new THREE.Mesh(tipGeom, silverMat);
+            tipL.position.set(-0.3, 0.38, 0);
+            magnetGroup.add(tipL);
+
+            const tipR = new THREE.Mesh(tipGeom, silverMat);
+            tipR.position.set(0.3, 0.38, 0);
+            magnetGroup.add(tipR);
+
+            return magnetGroup;
+        }
+
+        function createPlayer() {
+            playerGroup = new THREE.Group();
+            adventurerMesh = new THREE.Group();
+
+            // Materials
+            const skinMat = new THREE.MeshLambertMaterial({ color: 0xe0a96d });
+            const shirtMat = new THREE.MeshLambertMaterial({ color: 0x225588 });
+            const pantsMat = new THREE.MeshLambertMaterial({ color: 0x553311 });
+
+            // Torso
+            const torsoGeom = new THREE.BoxGeometry(0.8, 1.0, 0.45);
+            const torso = new THREE.Mesh(torsoGeom, shirtMat);
+            torso.position.y = 1.0;
+            torso.castShadow = true;
+            adventurerMesh.add(torso);
+
+            // Head
+            const headGeom = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const head = new THREE.Mesh(headGeom, skinMat);
+            head.position.y = 1.75;
+            head.castShadow = true;
+            adventurerMesh.add(head);
+
+            // Arms
+            const armGeom = new THREE.BoxGeometry(0.22, 0.8, 0.22);
+            leftArm = new THREE.Mesh(armGeom, skinMat);
+            leftArm.position.set(-0.52, 1.0, 0);
+            leftArm.castShadow = true;
+            adventurerMesh.add(leftArm);
+
+            rightArm = new THREE.Mesh(armGeom, skinMat);
+            rightArm.position.set(0.52, 1.0, 0);
+            rightArm.castShadow = true;
+            adventurerMesh.add(rightArm);
+
+            // Attach U-shaped Magnet to Right Hand
+            handHeldMagnetMesh = createUMagnetMesh();
+            handHeldMagnetMesh.scale.set(0.6, 0.6, 0.6);
+            handHeldMagnetMesh.position.set(0, -0.4, 0.2);
+            handHeldMagnetMesh.rotation.x = Math.PI / 3;
+            handHeldMagnetMesh.visible = false; // Hidden until collected
+            rightArm.add(handHeldMagnetMesh);
+
+            // Legs
+            const legGeom = new THREE.BoxGeometry(0.26, 0.85, 0.26);
+            leftLeg = new THREE.Mesh(legGeom, pantsMat);
+            leftLeg.position.set(-0.22, 0.42, 0);
+            leftLeg.castShadow = true;
+            adventurerMesh.add(leftLeg);
+
+            rightLeg = new THREE.Mesh(legGeom, pantsMat);
+            rightLeg.position.set(0.22, 0.42, 0);
+            rightLeg.castShadow = true;
+            adventurerMesh.add(rightLeg);
+
+            playerGroup.add(adventurerMesh);
+
+            // Magnet Glowing Aura Ring around player
+            const ringGeom = new THREE.RingGeometry(1.0, 1.3, 24);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xff2222, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+            magnetAuraRing = new THREE.Mesh(ringGeom, ringMat);
+            magnetAuraRing.rotation.x = Math.PI / 2;
+            magnetAuraRing.position.y = 0.08;
+            playerGroup.add(magnetAuraRing);
+
+            // Hitbox Debug Box
+            const boxGeom = new THREE.BoxGeometry(0.8, 1.7, 0.8);
+            const boxMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, visible: false });
+            playerBoxHelper = new THREE.Mesh(boxGeom, boxMat);
+            playerBoxHelper.position.y = 0.85;
+            playerGroup.add(playerBoxHelper);
+
+            playerGroup.position.set(LANES[currentLane], 0, 0);
+            scene.add(playerGroup);
+        }
+
+        function createSegment(zPos) {
+            const segment = new THREE.Group();
+            segment.position.z = zPos;
+
+            // Stone Path Flooring (Overlap extended to prevent any gaps)
+            const floorGeom = new THREE.BoxGeometry(9.0, 0.8, SEGMENT_LENGTH + 0.5);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x443d35, roughness: 0.85 });
+            const floor = new THREE.Mesh(floorGeom, floorMat);
+            floor.position.set(0, -0.4, -SEGMENT_LENGTH / 2);
+            floor.receiveShadow = true;
+            segment.add(floor);
+
+            // Side Temple Walls
+            const wallGeom = new THREE.BoxGeometry(1.5, 3.5, SEGMENT_LENGTH);
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x2d2721, roughness: 0.9 });
+
+            const leftWall = new THREE.Mesh(wallGeom, wallMat);
+            leftWall.position.set(-5.25, 1.75, -SEGMENT_LENGTH / 2);
+            leftWall.receiveShadow = true;
+            segment.add(leftWall);
+
+            const rightWall = new THREE.Mesh(wallGeom, wallMat);
+            rightWall.position.set(5.25, 1.75, -SEGMENT_LENGTH / 2);
+            rightWall.receiveShadow = true;
+            segment.add(rightWall);
+
+            // Decorative Side Pillars & Torches
+            for (let i = 0; i < SEGMENT_LENGTH; i += 10) {
+                const pillarGeom = new THREE.BoxGeometry(0.9, 4.0, 0.9);
+                const pillarMat = new THREE.MeshStandardMaterial({ color: 0x594f43 });
+
+                const pL = new THREE.Mesh(pillarGeom, pillarMat);
+                pL.position.set(-4.2, 2.0, -i - 2);
+                pL.castShadow = true;
+                segment.add(pL);
+
+                const pR = new THREE.Mesh(pillarGeom, pillarMat);
+                pR.position.set(4.2, 2.0, -i - 2);
+                pR.castShadow = true;
+                segment.add(pR);
+
+                // Torch Light
+                if (Math.random() > 0.4) {
+                    const torchLight = new THREE.PointLight(0xff7700, 0.8, 12);
+                    torchLight.position.set(-3.6, 2.5, -i - 2);
+                    segment.add(torchLight);
+                }
+            }
+
+            scene.add(segment);
+            trackSegments.push(segment);
+
+            // Spawn Obstacles & Collectibles only after 30m safe zone
+            if (Math.abs(zPos) > 30) {
+                spawnSegmentContent(zPos);
+            }
+        }
+
+        function buildInitialPath() {
+            nextSegmentZ = 0;
+            for (let i = 0; i < INITIAL_SEGMENTS; i++) {
+                createSegment(nextSegmentZ);
+                nextSegmentZ -= SEGMENT_LENGTH;
+            }
+        }
+
+        function updateInfinitePath() {
+            // Keep path always rendered up to 540m+ ahead continuously
+            if (playerGroup.position.z - nextSegmentZ < SEGMENT_LENGTH * 14) {
+                createSegment(nextSegmentZ);
+                nextSegmentZ -= SEGMENT_LENGTH;
+            }
+
+            // Recycle old segments further behind the player so the track doesn't cut off abruptly
+            for (let i = trackSegments.length - 1; i >= 0; i--) {
+                const seg = trackSegments[i];
+                if (seg.position.z > playerGroup.position.z + 65) {
+                    scene.remove(seg);
+                    trackSegments.splice(i, 1);
+                }
+            }
+        }
+
+        function spawnSegmentContent(segZ) {
+            const laneChoices = [0, 1, 2];
+            const obsLane = laneChoices[Math.floor(Math.random() * laneChoices.length)];
+
+            // Obstacle Type (0: Hurdle Rock, 1: High Barrier)
+            const obsType = Math.random() > 0.5 ? 0 : 1;
+            const obsZ = segZ - (10 + Math.random() * 15);
+
+            if (obsType === 0) {
+                // Rock Hurdle (Jumpable)
+                const geom = new THREE.BoxGeometry(2.0, 0.8, 0.8);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.9 });
+                const rock = new THREE.Mesh(geom, mat);
+                rock.position.set(LANES[obsLane], 0.4, obsZ);
+                rock.castShadow = true;
+                rock.userData = { type: 'hurdle', lane: obsLane, z: obsZ };
+                scene.add(rock);
+                obstacles.push(rock);
+            } else {
+                // High Arch Barrier (Slidable)
+                const group = new THREE.Group();
+                const barGeom = new THREE.BoxGeometry(2.2, 0.6, 0.4);
+                const poleGeom = new THREE.BoxGeometry(0.2, 2.5, 0.2);
+                const woodMat = new THREE.MeshStandardMaterial({ color: 0x663300 });
+
+                const bar = new THREE.Mesh(barGeom, woodMat);
+                bar.position.y = 1.9;
+                const p1 = new THREE.Mesh(poleGeom, woodMat);
+                p1.position.set(-1.0, 1.25, 0);
+                const p2 = new THREE.Mesh(poleGeom, woodMat);
+                p2.position.set(1.0, 1.25, 0);
+
+                group.add(bar, p1, p2);
+                group.position.set(LANES[obsLane], 0, obsZ);
+                group.userData = { type: 'high_barrier', lane: obsLane, z: obsZ };
+                scene.add(group);
+                obstacles.push(group);
+            }
+
+            // Spawn Coin Chains in remaining lanes
+            const coinLane = (obsLane + 1) % 3;
+            const coinGeom = new THREE.CylinderGeometry(0.35, 0.35, 0.08, 16);
+            const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.2 });
+
+            for (let c = 0; c < 5; c++) {
+                const coin = new THREE.Mesh(coinGeom, coinMat);
+                coin.rotation.x = Math.PI / 2;
+                coin.position.set(LANES[coinLane], 0.7, obsZ - (c * 2.2));
+                coin.castShadow = true;
+                coin.userData = { lane: coinLane };
+                scene.add(coin);
+                coins.push(coin);
+            }
+
+            <!-- Spawn Red U-Magnet Power-Up ONLY if NOT active and NOT on 20s cooldown -->
+            if (!isMagnetActive && !isMagnetOnCooldown && Math.abs(segZ) > 100 && Math.random() < 0.08) {
+                const magLane = (obsLane + 2) % 3;
+                const magMesh = createUMagnetMesh();
+                magMesh.scale.set(1.2, 1.2, 1.2);
+                magMesh.position.set(LANES[magLane], 0.8, obsZ - 12);
+                magMesh.userData = { lane: magLane };
+                scene.add(magMesh);
+                magnets.push(magMesh);
+            }
+        }
+
+        function setupInputHandlers() {
+            let startX = 0;
+            let startY = 0;
+            let startTime = 0;
+
+            window.addEventListener('touchstart', (e) => {
+                if (!isRunning || isPaused) return;
+                const touch = e.touches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                startTime = Date.now();
+            }, { passive: true });
+
+            window.addEventListener('touchend', (e) => {
+                if (!isRunning || isPaused) return;
+                const touch = e.changedTouches[0];
+                const deltaX = touch.clientX - startX;
+                const deltaY = touch.clientY - startY;
+                const deltaTime = Date.now() - startTime;
+
+                const minSwipeDist = 28;
+
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDist) {
+                    // HORIZONTAL SWIPES (NON-INVERTED)
+                    if (deltaX > 0) {
+                        shiftLane(1); // Swipe Right -> Move Right
+                    } else {
+                        shiftLane(-1); // Swipe Left -> Move Left
+                    }
+                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > minSwipeDist) {
+                    // VERTICAL SWIPES
+                    if (deltaY < 0) {
+                        triggerJump(); // Swipe Up -> Jump
+                    } else {
+                        triggerSlide(); // Swipe Down -> Slide
+                    }
+                } else if (deltaTime < 250 && Math.abs(deltaX) < 15 && Math.abs(deltaY) < 15) {
+                    // SCREEN TAP ZONES
+                    if (touch.clientX < window.innerWidth * 0.4) {
+                        shiftLane(-1); // Tap Left
+                    } else if (touch.clientX > window.innerWidth * 0.6) {
+                        shiftLane(1); // Tap Right
+                    } else {
+                        triggerJump(); // Tap Center
+                    }
+                }
+            }, { passive: true });
+
+            // Keyboard Controls
+            window.addEventListener('keydown', (e) => {
+                if (!isRunning || isPaused) return;
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') shiftLane(-1);
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') shiftLane(1);
+                if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') triggerJump();
+                if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') triggerSlide();
+            });
+
+            // UI Button Events
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('pause-btn').addEventListener('click', pauseGame);
+            document.getElementById('resume-btn').addEventListener('click', resumeGame);
+            document.getElementById('stop-btn').addEventListener('click', stopToMenu);
+            document.getElementById('hitbox-btn').addEventListener('click', toggleHitbox);
+        }
+
+        function shiftLane(dir) {
+            const targetLane = currentLane + dir;
+            if (targetLane >= 0 && targetLane < LANES.length) {
+                currentLane = targetLane;
+            }
+        }
+
+        function triggerJump() {
+            if (!isJumping && !isSliding) {
+                isJumping = true;
+                playerVelocityY = JUMP_FORCE;
+                playSound('jump');
+            }
+        }
+
+        function triggerSlide() {
+            if (!isSliding) {
+                isSliding = true;
+                slideTimer = 35;
+                if (isJumping) {
+                    playerVelocityY = -0.3;
+                }
+                playSound('slide');
+            }
+        }
+
+        function activateMagnet() {
+            isMagnetActive = true;
+            magnetTimeLeft = 10;
+            playSound('magnet');
+
+            document.getElementById('magnet-hud').classList.remove('hidden');
+            document.getElementById('magnet-timer').textContent = magnetTimeLeft + 's';
+
+            if (magnetAuraRing) magnetAuraRing.material.opacity = 0.7;
+            if (handHeldMagnetMesh) handHeldMagnetMesh.visible = true; // Show U-Magnet in runner's hand
+
+            if (magnetInterval) clearInterval(magnetInterval);
+            magnetInterval = setInterval(() => {
+                if (isPaused) return;
+                magnetTimeLeft--;
+                document.getElementById('magnet-timer').textContent = magnetTimeLeft + 's';
+
+                if (magnetTimeLeft <= 0) {
+                    clearInterval(magnetInterval);
+                    isMagnetActive = false;
+                    document.getElementById('magnet-hud').classList.add('hidden');
+                    if (magnetAuraRing) magnetAuraRing.material.opacity = 0;
+                    if (handHeldMagnetMesh) handHeldMagnetMesh.visible = false; // Hide magnet when timer expires
+
+                    // Start 20-second cooldown period
+                    startMagnetCooldown();
+                }
+            }, 1000);
+        }
+
+        function startMagnetCooldown() {
+            isMagnetOnCooldown = true;
+            magnetCooldownTimeLeft = 20;
+
+            const cooldownHud = document.getElementById('magnet-cooldown-hud');
+            const cooldownTimerText = document.getElementById('magnet-cooldown-timer');
+            cooldownHud.classList.remove('hidden');
+            cooldownTimerText.textContent = magnetCooldownTimeLeft + 's';
+
+            if (magnetCooldownInterval) clearInterval(magnetCooldownInterval);
+            magnetCooldownInterval = setInterval(() => {
+                if (isPaused) return;
+                magnetCooldownTimeLeft--;
+                cooldownTimerText.textContent = magnetCooldownTimeLeft + 's';
+
+                if (magnetCooldownTimeLeft <= 0) {
+                    clearInterval(magnetCooldownInterval);
+                    isMagnetOnCooldown = false;
+                    cooldownHud.classList.add('hidden');
+                }
+            }, 1000);
+        }
+
+        function toggleHitbox() {
+            showDebugHitboxes = !showDebugHitboxes;
+            playerBoxHelper.material.visible = showDebugHitboxes;
+            hitboxStatus.textContent = showDebugHitboxes ? "ON" : "OFF";
+        }
+
+        function updatePlayer() {
+            // Smooth Lane Interpolation
+            const targetX = LANES[currentLane];
+            playerGroup.position.x += (targetX - playerGroup.position.x) * 0.22;
+
+            // Jump Physics
+            if (isJumping) {
+                playerPosY += playerVelocityY;
+                playerVelocityY += GRAVITY;
+
+                if (playerPosY <= 0) {
+                    playerPosY = 0;
+                    isJumping = false;
+                    playerVelocityY = 0;
+                }
+            }
+
+            // Slide Mechanics
+            if (isSliding) {
+                slideTimer--;
+                adventurerMesh.rotation.x = -Math.PI / 3;
+                adventurerMesh.position.y = 0.2;
+                if (slideTimer <= 0) {
+                    isSliding = false;
+                    adventurerMesh.rotation.x = 0;
+                    adventurerMesh.position.y = 0;
+                }
+            } else {
+                adventurerMesh.rotation.x = 0;
+                adventurerMesh.position.y = 0;
+
+                // Running Arm/Leg Swing Animation
+                const time = Date.now() * 0.012;
+                if (leftArm && rightArm && leftLeg && rightLeg) {
+                    leftArm.rotation.x = Math.sin(time) * 0.7;
+                    rightArm.rotation.x = -Math.sin(time) * 0.7;
+                    leftLeg.rotation.x = -Math.sin(time) * 0.7;
+                    rightLeg.rotation.x = Math.sin(time) * 0.7;
+                }
+            }
+
+            playerGroup.position.y = playerPosY;
+            playerGroup.position.z -= gameSpeed;
+
+            // Camera Tracking
+            camera.position.z = playerGroup.position.z + 7.5;
+            camera.position.x = playerGroup.position.x * 0.35;
+
+            // Rotate Magnet Ring
+            if (magnetAuraRing && isMagnetActive) {
+                magnetAuraRing.rotation.z += 0.05;
+            }
+        }
+
+        function updateObstaclesAndItems() {
+            const playerZ = playerGroup.position.z;
+            const playerX = playerGroup.position.x;
+
+            // 1. Check Obstacle Collisions
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                const obsZ = obs.userData.z;
+                const distZ = Math.abs(obsZ - playerZ);
+
+                if (distZ < 0.75 && obs.userData.lane === currentLane) {
+                    let collision = false;
+
+                    if (obs.userData.type === 'hurdle') {
+                        if (playerPosY < 0.6) collision = true;
+                    } else if (obs.userData.type === 'high_barrier') {
+                        if (!isSliding && playerPosY < 1.1) collision = true;
+                    }
+
+                    if (collision) {
+                        gameOver();
+                        return;
+                    }
+                }
+
+                if (obsZ > playerZ + 10) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // 2. Collect Coins (Magnetic Attraction)
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                coin.rotation.z += 0.05;
+
+                const distZ = Math.abs(coin.position.z - playerZ);
+                const distX = Math.abs(coin.position.x - playerX);
+
+                if (isMagnetActive && distZ < 16) {
+                    coin.position.x += (playerX - coin.position.x) * 0.18;
+                    coin.position.y += (playerPosY + 0.8 - coin.position.y) * 0.18;
+                    coin.position.z += (playerZ - coin.position.z) * 0.18;
+                }
+
+                if (distZ < 1.0 && distX < 1.2 && Math.abs(coin.position.y - (playerPosY + 0.8)) < 1.5) {
+                    coinsCollected++;
+                    coinsText.textContent = coinsCollected;
+                    playSound('coin');
+
+                    scene.remove(coin);
+                    coins.splice(i, 1);
+                } else if (coin.position.z > playerZ + 10) {
+                    scene.remove(coin);
+                    coins.splice(i, 1);
+                }
+            }
+
+            // 3. Collect U-Magnets
+            for (let i = magnets.length - 1; i >= 0; i--) {
+                const mag = magnets[i];
+                mag.rotation.y += 0.04;
+
+                const distZ = Math.abs(mag.position.z - playerZ);
+                if (distZ < 1.0 && mag.userData.lane === currentLane) {
+                    activateMagnet();
+                    scene.remove(mag);
+                    magnets.splice(i, 1);
+                } else if (mag.position.z > playerZ + 10) {
+                    scene.remove(mag);
+                    magnets.splice(i, 1);
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isRunning && !isPaused) {
+                updatePlayer();
+                updateInfinitePath();
+                updateObstaclesAndItems();
+
+                // Distance Score
+                score = Math.floor(Math.abs(playerGroup.position.z));
+                scoreText.textContent = score + 'm';
+
+                // Speed progression
+                if (gameSpeed < maxSpeed) gameSpeed += 0.00008;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function startGame() {
+            score = 0;
+            coinsCollected = 0;
+            gameSpeed = 0.45;
+            currentLane = 1;
+            playerPosY = 0;
+            isJumping = false;
+            isSliding = false;
+            isMagnetActive = false;
+            isMagnetOnCooldown = false;
+
+            if (magnetInterval) clearInterval(magnetInterval);
+            if (magnetCooldownInterval) clearInterval(magnetCooldownInterval);
+
+            scoreText.textContent = '0m';
+            coinsText.textContent = '0';
+            document.getElementById('magnet-hud').classList.add('hidden');
+            document.getElementById('magnet-cooldown-hud').classList.add('hidden');
+
+            if (handHeldMagnetMesh) handHeldMagnetMesh.visible = false;
+            if (magnetAuraRing) magnetAuraRing.material.opacity = 0;
+
+            // Clear Scene Objects
+            obstacles.forEach(o => scene.remove(o));
+            coins.forEach(c => scene.remove(c));
+            magnets.forEach(m => scene.remove(m));
+            trackSegments.forEach(s => scene.remove(s));
+
+            obstacles.length = 0;
+            coins.length = 0;
+            magnets.length = 0;
+            trackSegments.length = 0;
+
+            playerGroup.position.set(LANES[currentLane], 0, 0);
+
+            // Rebuild Path
+            buildInitialPath();
+
+            menuOverlay.classList.add('opacity-0');
+            setTimeout(() => {
+                menuOverlay.classList.add('hidden');
+                menuOverlay.classList.remove('opacity-0');
+            }, 300);
+
+            isRunning = true;
+            isPaused = false;
+        }
+
+        function gameOver() {
+            isRunning = false;
+            playSound('crash');
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('temple_run_high_score', highScore);
+                highScoreText.textContent = highScore + 'm';
+            }
+
+            menuTitle.textContent = "GAME OVER";
+            menuSubtitle.textContent = "You hit an obstacle!";
+            finalScore.textContent = score + 'm';
+            finalCoins.textContent = coinsCollected;
+            finalHighScore.textContent = highScore + 'm';
+
+            statsContainer.classList.remove('hidden');
+            menuOverlay.classList.remove('hidden');
+        }
+
+        function pauseGame() {
+            if (!isRunning) return;
+            isPaused = true;
+            pauseOverlay.classList.remove('hidden');
+        }
+
+        function resumeGame() {
+            isPaused = false;
+            pauseOverlay.classList.add('hidden');
+        }
+
+        function stopToMenu() {
+            isPaused = false;
+            isRunning = false;
+            pauseOverlay.classList.add('hidden');
+
+            menuTitle.textContent = "TEMPLE RUN 3D";
+            menuSubtitle.textContent = "Collect Red U-Magnets & Dodge Obstacles!";
+            statsContainer.classList.add('hidden');
+            menuOverlay.classList.remove('hidden');
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Window Load Initialization
+        window.onload = function() {
+            initScene();
+            animate();
+        };
+    </script>
+</body>
+</html>
